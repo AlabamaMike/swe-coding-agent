@@ -13,6 +13,7 @@ from .base import (
 )
 from .config import AgentConfig
 from ..integrations.mcp_integration import MCPIntegration
+from ..executors.local_executor import LocalExecutor
 
 
 class CodingAgent:
@@ -26,6 +27,7 @@ class CodingAgent:
         self.message_handler: Optional[MessageHandler] = None
         self.task_executors: Dict[TaskType, TaskExecutor] = {}
         self.mcp_integration: Optional[MCPIntegration] = None
+        self.local_executor: Optional[LocalExecutor] = None
         
         self.current_tasks: Dict[str, TaskSpecification] = {}
         self.task_results: Dict[str, TaskResult] = {}
@@ -95,21 +97,50 @@ class CodingAgent:
         else:
             self.logger.warning("MCP API key not configured, MCP integration disabled")
     
+    async def initialize_local_executor(self):
+        """Initialize local executor for bash and file operations"""
+        self.logger.info("Initializing local executor")
+        
+        # Create local executor
+        self.local_executor = LocalExecutor(self.config.execution.working_directory)
+        await self.local_executor.initialize()
+        
+        # Register for all task types if in local or hybrid mode
+        if self.config.execution_mode in ["local", "hybrid"]:
+            for task_type in TaskType:
+                if self.config.prefer_local or task_type not in self.task_executors:
+                    self.register_task_executor(task_type, self.local_executor)
+                    
+        self.logger.info("Local executor initialized and registered")
+    
     async def start(self):
         """Start the agent and begin processing tasks"""
         self.logger.info(f"Starting {self.config.agent_name} (ID: {self.agent_id})")
+        self.logger.info(f"Execution mode: {self.config.execution_mode}, Prefer local: {self.config.prefer_local}")
         self.running = True
         
         if not self.message_handler:
             self.logger.error("No message handler registered!")
             return
         
-        # Initialize MCP if configured
+        # Initialize local executor
         try:
-            await self.initialize_mcp()
+            await self.initialize_local_executor()
         except Exception as e:
-            self.logger.error(f"Failed to initialize MCP: {e}")
-            # Continue without MCP if initialization fails
+            self.logger.error(f"Failed to initialize local executor: {e}")
+            # This is critical - cannot continue without local executor
+            if self.config.execution_mode == "local":
+                raise
+        
+        # Initialize MCP if configured
+        if self.config.execution_mode in ["mcp", "hybrid"]:
+            try:
+                await self.initialize_mcp()
+            except Exception as e:
+                self.logger.error(f"Failed to initialize MCP: {e}")
+                # Continue without MCP if initialization fails in hybrid mode
+                if self.config.execution_mode == "mcp":
+                    raise
         
         tasks = [
             asyncio.create_task(self._message_loop()),
@@ -433,6 +464,14 @@ class CodingAgent:
             await self.message_handler.send_message(deregistration)
         except Exception as e:
             self.logger.error(f"Failed to send deregistration: {e}")
+        
+        # Cleanup local executor
+        if self.local_executor:
+            try:
+                await self.local_executor.cleanup()
+                self.logger.info("Local executor closed")
+            except Exception as e:
+                self.logger.error(f"Failed to close local executor: {e}")
         
         # Cleanup MCP integration
         if self.mcp_integration:

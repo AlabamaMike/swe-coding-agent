@@ -136,6 +136,10 @@ class AgentConfig:
     task_timeout: int = 1800  # seconds
     heartbeat_interval: int = 30  # seconds
     
+    # Execution mode: "local", "mcp", or "hybrid"
+    execution_mode: str = "hybrid"  # Use local first, fallback to MCP
+    prefer_local: bool = True  # Prefer local execution when possible
+    
     @classmethod
     def from_file(cls, path: Path) -> "AgentConfig":
         """Load configuration from JSON or YAML file"""
