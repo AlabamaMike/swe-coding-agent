@@ -99,6 +99,16 @@ message_queue:
   queue_name: coding_agent_tasks
   exchange: agent_swarm
 
+mcp:
+  server_type: composio
+  api_key: ${COMPOSIO_API_KEY}
+  base_url: https://api.composio.dev
+  tools:
+    - github
+    - git
+    - file_manager
+    - code_interpreter
+
 github:
   token: ${GITHUB_TOKEN}
   auto_create_issues: true

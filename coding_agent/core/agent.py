@@ -12,6 +12,7 @@ from .base import (
     AgentMessage, TaskExecutor, MessageHandler
 )
 from .config import AgentConfig
+from ..integrations.mcp_integration import MCPIntegration
 
 
 class CodingAgent:
@@ -24,6 +25,7 @@ class CodingAgent:
         
         self.message_handler: Optional[MessageHandler] = None
         self.task_executors: Dict[TaskType, TaskExecutor] = {}
+        self.mcp_integration: Optional[MCPIntegration] = None
         
         self.current_tasks: Dict[str, TaskSpecification] = {}
         self.task_results: Dict[str, TaskResult] = {}
@@ -77,6 +79,22 @@ class CodingAgent:
         self.task_executors[task_type] = executor
         self.logger.info(f"Registered executor for {task_type.value}: {type(executor).__name__}")
     
+    async def initialize_mcp(self):
+        """Initialize MCP integration"""
+        if self.config.mcp.api_key:
+            self.logger.info("Initializing MCP integration")
+            self.mcp_integration = MCPIntegration(self.config.mcp)
+            await self.mcp_integration.initialize()
+            
+            # Validate environment
+            validations = await self.mcp_integration.validate_environment()
+            self.logger.info(f"MCP environment validation: {validations}")
+            
+            if not all(validations.values()):
+                self.logger.warning("Some MCP environment checks failed")
+        else:
+            self.logger.warning("MCP API key not configured, MCP integration disabled")
+    
     async def start(self):
         """Start the agent and begin processing tasks"""
         self.logger.info(f"Starting {self.config.agent_name} (ID: {self.agent_id})")
@@ -85,6 +103,13 @@ class CodingAgent:
         if not self.message_handler:
             self.logger.error("No message handler registered!")
             return
+        
+        # Initialize MCP if configured
+        try:
+            await self.initialize_mcp()
+        except Exception as e:
+            self.logger.error(f"Failed to initialize MCP: {e}")
+            # Continue without MCP if initialization fails
         
         tasks = [
             asyncio.create_task(self._message_loop()),
@@ -408,6 +433,14 @@ class CodingAgent:
             await self.message_handler.send_message(deregistration)
         except Exception as e:
             self.logger.error(f"Failed to send deregistration: {e}")
+        
+        # Cleanup MCP integration
+        if self.mcp_integration:
+            try:
+                await self.mcp_integration.close()
+                self.logger.info("MCP integration closed")
+            except Exception as e:
+                self.logger.error(f"Failed to close MCP integration: {e}")
         
         for task in tasks:
             task.cancel()
