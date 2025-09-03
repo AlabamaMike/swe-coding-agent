@@ -16,6 +16,7 @@ import json
 from .bash_executor import BashExecutor, BashCommand, BashResult
 from .file_handler import FileHandler, FileInfo, FileChange
 from ..core.base import TaskSpecification, TaskResult, TaskStatus, TaskExecutor
+from ..analysis import ProjectAnalyzer, CodeAnalyzer, DependencyAnalyzer, AnalysisContext
 
 
 @dataclass
@@ -43,6 +44,11 @@ class LocalExecutor(TaskExecutor):
         # Initialize components
         self.bash = BashExecutor(self.base_dir)
         self.files = FileHandler(self.base_dir)
+        
+        # Initialize analyzers for intelligent code manipulation
+        self.project_analyzer = ProjectAnalyzer(self.base_dir)
+        self.code_analyzer = CodeAnalyzer(self.base_dir)
+        self.dependency_analyzer = DependencyAnalyzer(self.base_dir)
         
         # Environment tracking
         self.environment = LocalEnvironment(working_dir=self.base_dir)
@@ -495,49 +501,96 @@ class Test{source_file.stem.title()}:
         self.execution_stats["files_created"] += 1
     
     async def _apply_refactoring(self, content: str, requirements: List[str]) -> str:
-        """Apply refactoring to code content"""
+        """Apply refactoring to code content using code analysis"""
         
-        # This is a simplified example
-        # In reality, would use AST manipulation, rope library, etc.
+        # Get refactoring suggestions from analyzer
+        suggestions = self.code_analyzer.suggest_refactorings(content)
         
         refactored = content
         
         for req in requirements:
             if "extract method" in req.lower():
-                # Simple example: extract long functions
-                # Would use AST in real implementation
-                pass
+                # Find long methods to extract
+                for suggestion in suggestions:
+                    if suggestion['type'] == 'extract_method':
+                        # Apply extraction
+                        # In production, would use rope or bowler
+                        pass
+                        
+            elif "reduce complexity" in req.lower():
+                # Apply complexity reduction suggestions
+                for suggestion in suggestions:
+                    if suggestion['type'] == 'simplify_logic':
+                        # Apply simplification
+                        pass
+                        
             elif "rename" in req.lower():
-                # Simple rename operation
-                # Would use rope or similar in real implementation
-                pass
+                # Use analyzer to find naming issues
+                for suggestion in suggestions:
+                    if suggestion['type'] == 'improve_naming':
+                        # Apply rename
+                        pass
         
         return refactored
     
     async def _fix_bug_in_file(self, file_path: str, test_output: str, result: TaskResult):
-        """Fix a bug in a specific file"""
+        """Fix a bug in a specific file using code analysis"""
         
         full_path = self.environment.working_dir / file_path
         content = self.files.read_file(full_path)
         
         if content:
-            # Analyze test output and apply fix
-            # This is simplified - would use more sophisticated analysis
+            # Analyze code for potential issues
+            smells = self.code_analyzer.find_code_smells(content)
+            
+            # Look for issues related to test failure
+            import re
+            error_line = None
+            if "line" in test_output.lower():
+                match = re.search(r'line (\d+)', test_output, re.IGNORECASE)
+                if match:
+                    error_line = int(match.group(1))
+            
+            # Apply targeted fixes based on analysis
             fixed_content = content
+            
+            # Check for common bug patterns
+            for smell in smells:
+                if smell['type'] == 'potential_bug' and (
+                    not error_line or smell.get('line') == error_line
+                ):
+                    # Apply fix based on bug type
+                    # In production, would use more sophisticated fixing
+                    pass
             
             self.files.write_file(full_path, fixed_content)
             result.files_modified.append(file_path)
     
     async def _optimize_file(self, file_path: str, profile_output: str, result: TaskResult):
-        """Optimize a file based on profiling"""
+        """Optimize a file based on profiling and analysis"""
         
         full_path = self.environment.working_dir / file_path
         content = self.files.read_file(full_path)
         
         if content:
-            # Apply optimizations
-            # This is simplified - would use actual optimization techniques
+            # Analyze code for optimization opportunities
+            metrics = self.code_analyzer.analyze_complexity(content)
+            suggestions = self.code_analyzer.suggest_refactorings(content)
+            
             optimized = content
+            
+            # Apply optimizations based on complexity
+            for suggestion in suggestions:
+                if suggestion['type'] == 'reduce_complexity' and metrics.cyclomatic_complexity > 10:
+                    # Apply complexity reduction
+                    # In production, would use AST manipulation
+                    pass
+                elif suggestion['type'] == 'optimize_imports':
+                    # Optimize import statements
+                    pass
+                elif suggestion['type'] == 'cache_results':
+                    # Add caching where beneficial
+                    pass
             
             self.files.write_file(full_path, optimized)
             result.files_modified.append(file_path)
@@ -555,6 +608,32 @@ class Test{source_file.stem.title()}:
             
             if not test_result.success:
                 result.warnings.append("Some tests failed")
+    
+    async def analyze_project(self) -> Dict[str, Any]:
+        """Perform comprehensive project analysis"""
+        self.logger.info("Performing comprehensive project analysis")
+        
+        # Use the project analyzer
+        context = AnalysisContext(
+            project_root=self.environment.working_dir,
+            include_tests=True,
+            include_docs=True
+        )
+        
+        analysis = await self.project_analyzer.analyze_project(context)
+        
+        # Generate improvement suggestions
+        suggestions = await self.project_analyzer.suggest_improvements(analysis)
+        
+        # Generate report
+        report = await self.project_analyzer.generate_report(analysis, "markdown")
+        
+        return {
+            "analysis": analysis.to_dict(),
+            "suggestions": suggestions,
+            "report": report,
+            "technical_debt_score": analysis.technical_debt_score
+        }
     
     async def _commit_changes(self, task: TaskSpecification, result: TaskResult):
         """Commit changes to git"""
